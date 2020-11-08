@@ -6,14 +6,15 @@ import time
 import json
 import datenbank
 import zeitdauer
-import subprocess as sub
+#import subprocess as sub # ersetzt durch requests
+import requests
 from PyDect200 import PyDect200
 
 # PyDect200 initialisieren
 PyDect200 = PyDect200.PyDect200
 
 # AVM Daten importieren
-with open('/home/pi/.credentials/avm.json') as creds:    
+with open('/home/pi/.credentials/avm.json') as creds:	
 	credentials = json.load(creds)
 
 fritzboxbenutzername = credentials['fritzboxbenutzername']
@@ -35,7 +36,7 @@ except:
 
 # Schwellenwerte importieren
 try:
-	with open('/home/pi/.credentials/schwellenwerte.json') as creds:    
+	with open('/home/pi/.credentials/schwellenwerte.json') as creds:	
 		credentials = json.load(creds)
 
 	AIN1start = credentials['AIN1start']
@@ -65,7 +66,7 @@ except:
 	AIN3stop = 3600000
 	
 # Telegram Daten importieren
-with open('/home/pi/.credentials/telegram.json') as creds:    
+with open('/home/pi/.credentials/telegram.json') as creds:	
 	credentials = json.load(creds)
 
 Bot1 = credentials['Bot1']
@@ -91,6 +92,9 @@ statusAIN1 = None
 stromAIN1 = None
 startzeitAIN1 = None
 stopzeitAIN1 = None
+startverbrauchAIN1 = None
+stopverbrauchAIN1 = None
+verbrauchAIN1 = None
 dauerAIN1 = None
 dauerstringAIN1 = None
 
@@ -105,6 +109,9 @@ statusAIN2 = None
 stromAIN2 = None
 startzeitAIN2 = None
 stopzeitAIN2 = None
+startverbrauchAIN2 = None
+stopverbrauchAIN2 = None
+verbrauchAIN2 = None
 dauerAIN2 = None
 dauerstringAIN2 = None
 
@@ -119,6 +126,9 @@ statusAIN3 = None
 stromAIN3 = None
 startzeitAIN3 = None
 stopzeitAIN3 = None
+startverbrauchAIN3 = None
+stopverbrauchAIN3 = None
+verbrauchAIN3 = None
 dauerAIN3 = None
 dauerstringAIN3 = None
 
@@ -333,6 +343,32 @@ def ermittlestrom(device):
 	return strom
 
 
+# Funktion zum Ermitteln des aktuellen Verbrauchsstands in Wh
+def ermittleverbrauch(device):
+	stand = verbindung.get_energy_single(device)
+	stand = stand.encode('ascii', 'ignore')
+	if stand == "inval" or stand == "":
+		stand = "NULL"
+	elif stand == "0":
+		stand = 0
+	else:
+		try:
+			stand = int(stand)
+		except:
+			stand = "NULL"
+	return stand
+
+# Funktion zum Absenden der Telegramnachricht
+def sendeTelegram(bot,chat_id,text,disable_notification=False):
+	params = (
+		('chat_id', chat_id),
+		('text', text),
+		('disable_notification', str(disable_notification))
+	)
+
+	response = requests.post('https://api.telegram.org/bot%s/sendMessage' %(bot), params=params)
+	return response
+
 # Hauptprogramm	
 ermittleaktivegeraete()
 startdatenbanklesen()	
@@ -343,6 +379,7 @@ while True:
 	if aktivegeraete >= 1:
 		statusAIN1 = ermittlestatus(AIN1)
 		stromAIN1 = ermittlestrom(AIN1)
+		verbrauchAIN1 = ermittleverbrauch(AIN1)
 		datenbankfehlerAIN1 = datenbank.lesen('failure','device1')
 		if statusAIN1 == "NULL" or stromAIN1 == "NULL":
 			runningAIN1 = 0
@@ -352,11 +389,12 @@ while True:
 			if datenbankfehlerAIN1 == 0:
 				datenbank.update('failure','device1',1)
 				try:
-					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt.'
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					continue
-			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt." %(NameAIN1))
+			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt." %(NameAIN1))
 			print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN1,statusAIN1))
 			print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN1,stromAIN1))
 			print("")
@@ -365,7 +403,8 @@ while True:
 				datenbank.update('failure','device1',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					continue					
 			print("Die Steckdose '%s' ist ausgeschaltet. Es kann kein Vorgang gestartet werden." %(NameAIN1))
@@ -377,15 +416,17 @@ while True:
 				datenbank.update('failure','device1',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					continue				
 			if statusAIN1 == 1 and stromAIN1 > startstromAIN1:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				startzeitAIN1 = time.time()
 				try:
-					text = "Das Gerät %s wurde am %s gestartet." %(NameAIN1,now)
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					text = "Das Gerät %s wurde am %s gestartet. Der Anfangszählerstand ist %s." %(NameAIN1,now,verbrauchAIN1)
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN1))
 					continue
@@ -405,7 +446,8 @@ while True:
 				datenbank.update('failure','device1',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					continue	
 			if statusAIN1 == 0:
@@ -415,11 +457,12 @@ while True:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				try:
 					text = "Die Steckdose wurde ausgeschaltet. Bitte prüfen."
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+					print(sendeTelegram(Bot1,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot1,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN1))
 					continue
-				print("Die Steckdose wurde ausgeschaltet.Bitte prüfen.")
+				print("Die Steckdose wurde ausgeschaltet. Bitte prüfen.")
 				print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN1,statusAIN1))
 				print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN1,stromAIN1))
 				print("")
@@ -437,8 +480,9 @@ while True:
 					dauerAIN1 = int(dauerAIN1)
 					dauerstringAIN1 = zeitdauer.ermittlerzeitdauer(dauerAIN1)
 					try:
-						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s." %(NameAIN1,now,dauerstringAIN1)
-						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
+						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s. Der Zählerstand beträgt %s Wh." %(NameAIN1,now,dauerstringAIN1,verbrauchAIN1)
+						print(sendeTelegram(Bot1,groupid,text,False))
+#						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot1,groupid,text)], shell=True)
 					except:
 						print("Ehrenrunde '%s'" &(NameAIN1))
 						continue
@@ -460,6 +504,7 @@ while True:
 	if aktivegeraete >= 2:
 		statusAIN2 = ermittlestatus(AIN2)
 		stromAIN2 = ermittlestrom(AIN2)
+		verbrauchAIN2 = ermittleverbrauch(AIN2)		
 		datenbankfehlerAIN2 = datenbank.lesen('failure','device2')
 		if statusAIN2 == "NULL" or stromAIN2 == "NULL":
 			runningAIN2 = 0
@@ -469,11 +514,12 @@ while True:
 			if datenbankfehlerAIN2 == 0:
 				datenbank.update('failure','device2',1)
 				try:
-					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt.'
+					print(sendeTelegram(Bot2,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					continue
-			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt." %(NameAIN2))
+			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt." %(NameAIN2))
 			print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN2,statusAIN2))
 			print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN2,stromAIN2))
 			print("")
@@ -482,7 +528,8 @@ while True:
 				datenbank.update('failure','device2',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					print(sendeTelegram(Bot2,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					continue					
 			print("Die Steckdose '%s' ist ausgeschaltet. Es kann kein Vorgang gestartet werden." %(NameAIN2))
@@ -494,15 +541,17 @@ while True:
 				datenbank.update('failure','device2',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					print(sendeTelegram(Bot2,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					continue				
 			if statusAIN2 == 1 and stromAIN2 > startstromAIN2:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				startzeitAIN2 = time.time()
 				try:
-					text = "Das Gerät %s wurde am %s gestartet." %(NameAIN2,now)
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					text = "Das Gerät %s wurde am %s gestartet. Der Zählerstand beträgt %s Wh." %(NameAIN2,now,verbrauchAIN2)
+					print(sendeTelegram(Bot2,groupid,text,False))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN2))
 					continue
@@ -522,7 +571,8 @@ while True:
 				datenbank.update('failure','device2',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					print(sendeTelegram(Bot2,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					continue	
 			if statusAIN2 == 0:
@@ -532,11 +582,12 @@ while True:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				try:
 					text = "Die Steckdose wurde ausgeschaltet. Bitte prüfen."
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+					print(sendeTelegram(Bot2,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot2,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN2))
 					continue
-				print("Die Steckdose wurde ausgeschaltet.Bitte prüfen.")
+				print("Die Steckdose wurde ausgeschaltet. Bitte prüfen.")
 				print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN2,statusAIN2))
 				print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN2,stromAIN2))
 				print("")
@@ -554,8 +605,9 @@ while True:
 					dauerAIN2 = int(dauerAIN2)
 					dauerstringAIN2 = zeitdauer.ermittlerzeitdauer(dauerAIN2)
 					try:
-						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s." %(NameAIN2,now,dauerstringAIN2)
-						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
+						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s. Der Zählerstand beträgt %s Wh." %(NameAIN2,now,dauerstringAIN2,verbrauchAIN2)
+						print(sendeTelegram(Bot2,groupid,text,True))
+#						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot2,groupid,text)], shell=True)
 					except:
 						print("Ehrenrunde '%s'" &(NameAIN2))
 						continue
@@ -577,6 +629,7 @@ while True:
 	if aktivegeraete == 3:
 		statusAIN3 = ermittlestatus(AIN3)
 		stromAIN3 = ermittlestrom(AIN3)
+		verbrauchAIN3 = ermittleverbrauch(AIN3)		
 		datenbankfehlerAIN3 = datenbank.lesen('failure','device3')
 		if statusAIN3 == "NULL" or stromAIN3 == "NULL":
 			runningAIN3 = 0
@@ -586,11 +639,12 @@ while True:
 			if datenbankfehlerAIN3 == 0:
 				datenbank.update('failure','device3',1)
 				try:
-					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					text = 'Es ist ein Fehler aufgetreten. Die Steckdose ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt.'
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					continue
-			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programn wurde zurückgesetzt." %(NameAIN3))
+			print("Es ist ein Fehler aufgetreten. Die Steckdose '%s' ist nicht mehr erreichbar. Das Programm wurde zurückgesetzt." %(NameAIN3))
 			print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN3,statusAIN3))
 			print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN3,stromAIN3))
 			print("")
@@ -599,7 +653,8 @@ while True:
 				datenbank.update('failure','device3',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					continue					
 			print("Die Steckdose '%s' ist ausgeschaltet. Es kann kein Vorgang gestartet werden." %(NameAIN3))
@@ -611,15 +666,17 @@ while True:
 				datenbank.update('failure','device3',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					continue				
 			if statusAIN3 == 1 and stromAIN3 > startstromAIN3:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				startzeitAIN3 = time.time()
 				try:
-					text = "Das Gerät %s wurde am %s gestartet." %(NameAIN3,now)
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					text = "Das Gerät %s wurde am %s gestartet. Der Zählerstand beträgt %s Wh." %(NameAIN3,now,verbrauchAIN3)
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN3))
 					continue
@@ -639,7 +696,8 @@ while True:
 				datenbank.update('failure','device3',0)
 				try:
 					text = 'Der Fehler ist behoben. Die Steckdose ist wieder erreichbar.'
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					continue	
 			if statusAIN3 == 0:
@@ -649,11 +707,12 @@ while True:
 				now = time.strftime("%d.%m.%Y um %H:%M")
 				try:
 					text = "Die Steckdose wurde ausgeschaltet. Bitte prüfen."
-					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+					print(sendeTelegram(Bot3,groupid,text,True))
+#					sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s&disable_notification=True'" %(Bot3,groupid,text)], shell=True)
 				except:
 					print("Ehrenrunde '%s'" &(NameAIN3))
 					continue
-				print("Die Steckdose wurde ausgeschaltet.Bitte prüfen.")
+				print("Die Steckdose wurde ausgeschaltet. Bitte prüfen.")
 				print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN3,statusAIN3))
 				print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN3,stromAIN3))
 				print("")
@@ -671,12 +730,13 @@ while True:
 					dauerAIN3 = int(dauerAIN3)
 					dauerstringAIN3 = zeitdauer.ermittlerzeitdauer(dauerAIN3)
 					try:
-						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s." %(NameAIN3,now,dauerstringAIN3)
-						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
+						text = "Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s. Der Zählerstand beträgt %s Wh." %(NameAIN3,now,dauerstringAIN3,verbrauchAIN3)
+						print(sendeTelegram(Bot3,groupid,text,False))
+#						sub.call (["curl -X  POST 'https://api.telegram.org/bot%s/sendMessage?chat_id=%s=&text=%s'" %(Bot3,groupid,text)], shell=True)
 					except:
 						print("Ehrenrunde '%s'" &(NameAIN3))
 						continue
-					print("Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s." %(NameAIN3,now,dauerstringAIN3))
+					print("Das Gerät '%s' ist seit %s fertig. Die Vorgangsdauer betrug %s. Der Zählerstand beträgt %s Wh." %(NameAIN3,now,dauerstringAIN3,verbrauchAIN3))
 					print("Der aktuelle Status der Steckdose '%s': %s" %(NameAIN3,statusAIN3))
 					print("Der aktuelle Stromverbrauch der Steckdose '%s': %s" %(NameAIN3,stromAIN3))
 					print("")
