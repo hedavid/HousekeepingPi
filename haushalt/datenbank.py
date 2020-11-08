@@ -3,23 +3,22 @@
 
 # Import der notwendigen Bibliotheken
 import json
-import MySQLdb
+import sqlite3
+import os
+#import MySQLdb
+
+conn = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 
 # Zugangsdaten importieren
 with open('/home/pi/.credentials/datenbank.json') as creds:    
 	credentials = json.load(creds)
 
-# Setzen der Datenbank Daten
-datenbankserver = credentials['datenbankserver']
-datenbankbenutzername = credentials['datenbankbenutzername']
-datenbankpasswort = credentials['datenbankpasswort']
-datenbankname = credentials['datenbankname']
 
 # Funktion Datenbank auslesen
 def lesen(tabelle, feld, start=None):
 	mysql = None
 	try:
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		if "running" in feld:
 			datenbankquery = """SELECT %s FROM %s ORDER BY id DESC LIMIT 1;"""
@@ -59,7 +58,7 @@ def lesen(tabelle, feld, start=None):
 			mysql.close()
 
 # Funktion Datenbank schreiben
-def schreiben(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None):
+def schreiben(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None, feld4=None, wert4=None):
 	mysql = None
 	if wert1 == None:
 		wert1 = "NULL"
@@ -67,6 +66,11 @@ def schreiben(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=N
 		wert2 = "NULL"
 	if wert3 == None:
 		wert3 = "NULL"
+	if wert4 == None:
+		wert4 = "NULL"
+	if feld4 != None:
+		query = """INSERT INTO %s (%s, %s, %s, %s) VALUES (%s,%s,%s, %s);"""
+		datenbankquery = query %(tabelle, feld1, feld2, feld3, feld4, wert1, wert2, wert3, wert4)
 	if feld3 != None:
 		query = """INSERT INTO %s (%s, %s, %s) VALUES (%s,%s,%s);"""
 		datenbankquery = query %(tabelle, feld1, feld2, feld3, wert1, wert2, wert3)
@@ -77,7 +81,7 @@ def schreiben(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=N
 		query = """INSERT INTO %s (%s) VALUES (%s);"""
 		datenbankquery = query %(tabelle, feld1, wert1)
 	try:
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		mysql.commit()
@@ -92,7 +96,7 @@ def schreiben(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=N
 			
 			
 # Funktion Datenbankupdate
-def update(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None):
+def update(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None, feld4=None, wert4=None):
 	mysql = None
 	if wert1 == None:
 		wert1 = "NULL"
@@ -100,6 +104,11 @@ def update(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None
 		wert2 = "NULL"
 	if wert3 == None:
 		wert3 = "NULL"
+	if wert4 == None:
+		wert4 = "NULL"
+	if feld4 !=None:
+		query = """UPDATE %s SET %s = %s, %s = %s, %s = %s, %s = %s ORDER BY id DESC LIMIT 1;"""
+		datenbankquery = query %(tabelle, feld1, wert1, feld2, wert2, feld3, wert3, feld4, wert4)	
 	if feld3 !=None:
 		query = """UPDATE %s SET %s = %s, %s = %s, %s = %s ORDER BY id DESC LIMIT 1;"""
 		datenbankquery = query %(tabelle, feld1, wert1, feld2, wert2, feld3, wert3)	
@@ -110,7 +119,7 @@ def update(tabelle, feld1, wert1, feld2=None, wert2=None, feld3=None, wert3=None
 		query = """UPDATE %s SET %s = %s ORDER BY id DESC LIMIT 1;"""
 		datenbankquery = query %(tabelle, feld1, wert1)
 	try:
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		mysql.commit()
@@ -129,7 +138,7 @@ def loeschen(tabelle):
 	query = """DELETE FROM %s ORDER BY id DESC LIMIT 1;"""
 	datenbankquery = query %(tabelle)
 	try:
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		mysql.commit()
@@ -145,10 +154,10 @@ def loeschen(tabelle):
 # Funktion temporäre Datenbank erstellen
 def erstelletemp():
 	mysql = None
-	query = """CREATE TABLE temp (id INT AUTO_INCREMENT PRIMARY KEY, strom INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"""
+	query = """CREATE TABLE temp (id INT AUTO_INCREMENT PRIMARY KEY, strom INT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, verbrauch INT);"""
 	datenbankquery = query
 	try:
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		mysql.commit()
@@ -167,7 +176,7 @@ def exporttemp():
 	query = """SELECT * FROM temp INTO OUTFILE '/tmp/aufzeichnung.txt' LINES TERMINATED BY '\n';"""
 	datenbankquery = query
 	try:	
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		mysql.commit()
@@ -182,11 +191,16 @@ def exporttemp():
 
 # Funktion temporäre Datenbank löschen
 def loeschetemp():
+	if os.path.isfile('/home/pi/.credentials/datenbank.db'):
+    # alte Datenbank sichern
+		if os.path.isfile('/home/pi/.credentials/datenbank.db.bak'):
+			os.remove('/home/pi/.credentials/datenbank.db.bak')
+		os.rename('/home/pi/.credentials/datenbank.db','/home/pi/.credentials/datenbank.db.bak')
 	mysql = None
 	query = """SET sql_notes = 0; DROP TABLE IF EXISTS temp; SET sql_notes = 1;"""
 	datenbankquery = query
 	try:	
-		mysql = MySQLdb.connect(datenbankserver, datenbankbenutzername, datenbankpasswort, datenbankname)
+		mysql = sqlite3.connect('/home/pi/.credentials/datenbank.db')
 		zeiger = mysql.cursor()
 		zeiger.execute(datenbankquery)
 		fehler = 0
